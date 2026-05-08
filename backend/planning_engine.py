@@ -115,6 +115,16 @@ def calc_bom(
     if n == 0:
         return {"items": [], "total_net": 0.0, "warnings": ["Keine Module platziert"], "system": inverter_system}
 
+    # Sanity-Check: module_dimensions_m muss existieren
+    if "module_dimensions_m" not in layout:
+        raise ValueError("Layout muss 'module_dimensions_m' enthalten (wurde generate_layout nicht aufgerufen?)")
+
+    m_w = layout["module_dimensions_m"].get("w")
+    m_h = layout["module_dimensions_m"].get("h")
+
+    if not m_w or m_w <= 0 or not m_h or m_h <= 0:
+        raise ValueError(f"Modul-Dimensionen ungültig: w={m_w}, h={m_h} — muss > 0 sein")
+
     # Anzahl Reihen (gleiche y-Koordinate ≈ gleiche Reihe)
     rows_y = sorted({round(m["y_m"], 2) for m in mods})
     rows_count = len(rows_y)
@@ -129,7 +139,6 @@ def calc_bom(
     # Schienen-Bedarf: 2 Schienen pro Reihe (oben+unten am Modulrahmen),
     # Länge = max Modulbreite × Anzahl Module + Gaps
     # Modul-Breite m_w (in landscape ist m_w = module_length)
-    m_w = layout["module_dimensions_m"]["w"]
     rail_meters_per_row = max_cols * m_w + (max_cols - 1) * 0.02  # gaps
     total_rail_meters = 2 * rows_count * rail_meters_per_row * 1.05  # 5% Verschnitt
     rails_count = math.ceil(total_rail_meters / rail_length_m)
@@ -138,11 +147,11 @@ def calc_bom(
     hooks_per_rail = max(math.ceil(rail_meters_per_row / hook_spacing_m) + 1, 3)
     total_hooks = hooks_per_rail * 2 * rows_count
 
-    # Klemmen: 2 EndClamps + (n_in_row - 1) MidClamps pro Schiene, ×2 Schienen pro Reihe
-    end_clamps = 4 * rows_count   # 2 Schienen × 2 Enden
-    mid_clamps = sum(2 * (cnt - 1) for cnt in cols_per_row.values()) * 2  # x 2 Schienen
-    # tatsächlich: 2*(cnt-1) ist falsch — pro Schiene gibt's (cnt-1) MidClamps zwischen Modulen
-    # also pro Reihe 2 Schienen × (cnt-1) MidClamps
+    # Klemmen: EndClamps (an Schienen-Enden) + MidClamps (zwischen Modulen)
+    # Pro Reihe: 2 Schienen (oben+unten)
+    # - End: 4 pro Reihe (2 Schienen × 2 Enden)
+    # - Mid: (modules_pro_reihe - 1) pro Schiene × 2 Schienen
+    end_clamps = 4 * rows_count
     mid_clamps = sum((cnt - 1) for cnt in cols_per_row.values()) * 2
 
     # Stockschrauben: 1 pro Dachhaken
